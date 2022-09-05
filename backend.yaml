@@ -1,0 +1,243 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vosk-engine
+spec:
+  selector:
+    matchLabels:
+      app: vosk-engine
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: vosk-engine
+    spec:
+      containers:
+        - name: vosk-engine
+          image: kxingjing/asr_vosk:1.0
+          env:
+            - name: "VOSK_SERVER_INTERFACE"
+              value: "0.0.0.0"
+            - name: "VOSK_SERVER_PORT"
+              value: "2700"
+            - name: "VOSK_MODEL_PATH"
+              value: "model"
+            - name: "VOSK_SAMPLE_RATE"
+              value: "48000"
+            - name: "RABBITMQ_URL"
+              value: "host.docker.internal"
+            - name: "RABBITMQ_PORT"
+              value: "31672"
+            - name: "RABBITMQ_QUEUE"
+              value: "transcription"
+          resources:
+            limits:
+              memory: "500Mi"
+              cpu: "500m"
+          ports:
+            - containerPort: 2700
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vosk-engine
+spec:
+  type: ClusterIP
+  selector:
+    app: vosk-engine
+  ports:
+    - port: 80
+      targetPort: 2700
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ner-service
+spec:
+  selector:
+    matchLabels:
+      app: ner-service
+  template:
+    metadata:
+      labels:
+        app: ner-service
+    spec:
+      containers:
+        - name: ner-service
+          image: jonathanchewst/nerservice:1.0.0
+          env:
+            - name: "UI_URL"
+              value: "*"
+            - name: "ASPNETCORE_ENVIRONMENT"
+              value: "Development"
+            - name: "RABBITMQ_HOST"
+              value: "host.docker.internal"
+            - name: "RABBITMQ_PORT"
+              value: "31672"
+            - name: "RABBITMQ_USER"
+              value: "guest"
+            - name: "RABBITMQ_PASSWORD"
+              value: "guest"
+            - name: "RABBITMQ_VHOST"
+              value: "/"
+            - name: "RABBITMQ_HEARTBEAT"
+              value: "60"
+            - name: "RABBITMQ_TRANSCRIPTION_EXCHANGE"
+              value: ""
+            - name: "RABBITMQ_TRANSCRIPTION_QUEUE"
+              value: "ner"
+            - name: "RABBITMQ_TRANSCRIPTION_ROUTING_KEY"
+              value: ""
+          resources:
+            limits:
+              cpu: 500m
+            requests:
+              cpu: 200m
+---
+# SERVICE
+# add in entry for ingress in ingress repo and run jenkins pipeline for ingress to update
+apiVersion: v1
+kind: Service
+metadata:
+  name: ner-service
+  labels:
+    app: ner-service
+spec:
+  ports:
+    - targetPort: 80
+      port: 80
+      protocol: TCP
+  selector:
+    app: ner-service
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transcription-service
+spec:
+  selector:
+    matchLabels:
+      app: transcription-service
+  template:
+    metadata:
+      labels:
+        app: transcription-service
+    spec:
+      containers:
+        - name: transcription-service
+          image: jonathanchewst/transcriptionservice:1.0.0
+          env:
+            - name: "UI_URL"
+              value: "*"
+            - name: "ASPNETCORE_ENVIRONMENT"
+              value: "Development"
+            - name: "RABBITMQ_HOST"
+              value: "host.docker.internal"
+            - name: "RABBITMQ_PORT"
+              value: "31672"
+            - name: "RABBITMQ_USER"
+              value: "guest"
+            - name: "RABBITMQ_PASSWORD"
+              value: "guest"
+            - name: "RABBITMQ_VHOST"
+              value: "/"
+            - name: "RABBITMQ_HEARTBEAT"
+              value: "60"
+            - name: "RABBITMQ_TRANSCRIPTION_EXCHANGE"
+              value: ""
+            - name: "RABBITMQ_TRANSCRIPTION_QUEUE"
+              value: "transcription"
+            - name: "RABBITMQ_TRANSCRIPTION_ROUTING_KEY"
+              value: ""
+            - name: "SIGNALR_MAXIMUM_RECEIVE_MESSAGE_SIZE"
+              value: "200000"
+          resources:
+            limits:
+              cpu: 500m
+            requests:
+              cpu: 200m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: transcription-service
+  labels:
+    app: transcription-service
+spec:
+  ports:
+    - targetPort: 80
+      port: 80
+      protocol: TCP
+  selector:
+    app: transcription-service
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+spec:
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3.9-management
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+spec:
+  type: NodePort
+  selector:
+    app: rabbitmq
+  ports:
+    - port: 80
+      targetPort: 15672
+      nodePort: 32000
+      name: "management"
+    - port: 5672
+      targetPort: 5672
+      nodePort: 31672
+      name: "connection"
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress
+  annotations:
+    konghq.com/strip-path: "true"
+spec:
+  ingressClassName: kong
+  rules:
+    - http:
+        paths:
+          - path: /transcription-service
+            pathType: Prefix
+            backend:
+              service:
+                name: transcription-service
+                port:
+                  number: 80
+          - path: /ner-service
+            pathType: Prefix
+            backend:
+              service:
+                name: ner-service
+                port:
+                  number: 80
+          - path: /vosk-engine
+            pathType: Prefix
+            backend:
+              service:
+                name: vosk-engine
+                port:
+                  number: 80
