@@ -1,3 +1,52 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+spec:
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3.9-management
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+spec:
+  type: NodePort
+  selector:
+    app: rabbitmq
+  ports:
+    - port: 80
+      targetPort: 15672
+      nodePort: 32000
+      name: "management"
+    - port: 5672
+      targetPort: 5672
+      nodePort: 31672
+      name: "connection"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vosk-engine
+spec:
+  type: ClusterIP
+  selector:
+    app: vosk-engine
+  ports:
+    - port: 80
+      targetPort: 2700
+      protocol: TCP
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -14,7 +63,7 @@ spec:
     spec:
       containers:
         - name: vosk-engine
-          image: kxingjing/asr_vosk:1.0
+          image: kxingjing/asr-engine:1.1
           env:
             - name: "VOSK_SERVER_INTERFACE"
               value: "0.0.0.0"
@@ -28,27 +77,43 @@ spec:
               value: "host.docker.internal"
             - name: "RABBITMQ_PORT"
               value: "31672"
-            - name: "RABBITMQ_QUEUE"
+            - name: "RABBITMQ_EXCHANGE"
               value: "transcription"
           resources:
             limits:
-              memory: "500Mi"
-              cpu: "500m"
+              memory: "800Mi"
+              cpu: "800m"
           ports:
             - containerPort: 2700
 ---
-apiVersion: v1
-kind: Service
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: vosk-engine
+  name: ner-engine
 spec:
-  type: ClusterIP
   selector:
-    app: vosk-engine
-  ports:
-    - port: 80
-      targetPort: 2700
-      protocol: TCP
+    matchLabels:
+      app: ner-engine
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: ner-engine
+    spec:
+      containers:
+        - name: ner-engine
+          image: kxingjing/ner-engine:1.0
+          env:
+            - name: "RABBITMQ_URL"
+              value: "host.docker.internal"
+            - name: "RABBITMQ_PORT"
+              value: "31672"
+            - name: "RABBITMQ_PUBLISH_QUEUE"
+              value: "slot-intent"
+            - name: "RABBITMQ_SUBSCRIBE_EXCHANGE"
+              value: "transcription"
+            - name: "RABBITMQ_SUBSCRIBE_QUEUE"
+              value: "ner-consumer"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -86,7 +151,7 @@ spec:
             - name: "RABBITMQ_TRANSCRIPTION_EXCHANGE"
               value: ""
             - name: "RABBITMQ_TRANSCRIPTION_QUEUE"
-              value: "ner"
+              value: "slot-intent"
             - name: "RABBITMQ_TRANSCRIPTION_ROUTING_KEY"
               value: ""
           resources:
@@ -146,9 +211,9 @@ spec:
             - name: "RABBITMQ_HEARTBEAT"
               value: "60"
             - name: "RABBITMQ_TRANSCRIPTION_EXCHANGE"
-              value: ""
-            - name: "RABBITMQ_TRANSCRIPTION_QUEUE"
               value: "transcription"
+            - name: "RABBITMQ_TRANSCRIPTION_QUEUE"
+              value: "service-consumer"
             - name: "RABBITMQ_TRANSCRIPTION_ROUTING_KEY"
               value: ""
             - name: "SIGNALR_MAXIMUM_RECEIVE_MESSAGE_SIZE"
@@ -177,37 +242,67 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: rabbitmq
+  name: state-service
 spec:
   selector:
     matchLabels:
-      app: rabbitmq
+      app: state-service
   template:
     metadata:
       labels:
-        app: rabbitmq
+        app: state-service
     spec:
       containers:
-        - name: rabbitmq
-          image: rabbitmq:3.9-management
+        - name: state-service
+          image: jonathanchewst/stateservice:1.0.0
+          env:
+            - name: "UI_URL"
+              value: "*"
+            - name: "ASPNETCORE_ENVIRONMENT"
+              value: "Development"
+            - name: "RABBITMQ_CLIENT"
+              value: "State Service"
+            - name: "RABBITMQ_HOST"
+              value: "host.docker.internal"
+            - name: "RABBITMQ_PORT"
+              value: "31672"
+            - name: "RABBITMQ_USER"
+              value: "guest"
+            - name: "RABBITMQ_PASSWORD"
+              value: "guest"
+            - name: "RABBITMQ_STATE_EXCHANGE"
+              value: ""
+            - name: "RABBITMQ_STATE_QUEUE"
+              value: "state"
+            - name: "RABBITMQ_STATE_ROUTING_KEY"
+              value: "state"
+            - name: "SIGNALR_MAXIMUM_RECEIVE_MESSAGE_SIZE"
+              value: "32000"
+          resources:
+            limits:
+              memory: "500Mi"
+              cpu: 500m
+            requests:
+              cpu: 200m
+          ports:
+            - containerPort: 80
 ---
+# SERVICE
+# add in entry for ingress in ingress repo and run jenkins pipeline for ingress to update
 apiVersion: v1
 kind: Service
 metadata:
-  name: rabbitmq
+  name: state-service
+  labels:
+    app: state-service
 spec:
-  type: NodePort
-  selector:
-    app: rabbitmq
   ports:
-    - port: 80
-      targetPort: 15672
-      nodePort: 32000
-      name: "management"
-    - port: 5672
-      targetPort: 5672
-      nodePort: 31672
-      name: "connection"
+    - targetPort: 80
+      port: 80
+      protocol: TCP
+  selector:
+    app: state-service
+  type: ClusterIP
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -232,6 +327,13 @@ spec:
             backend:
               service:
                 name: ner-service
+                port:
+                  number: 80
+          - path: /state-service
+            pathType: Prefix
+            backend:
+              service:
+                name: state-service
                 port:
                   number: 80
           - path: /vosk-engine
