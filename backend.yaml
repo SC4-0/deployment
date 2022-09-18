@@ -79,6 +79,12 @@ spec:
               value: "31672"
             - name: "RABBITMQ_EXCHANGE"
               value: "transcription"
+            - name: "RABBITMQ_HEARTBEAT"
+              value: "1200"
+            - name: "RABBITMQ_BLOCKED_TIMEOUT"
+              value: "2400"
+            - name: "PYTHONUNBUFFERED"
+              value: "1"
           resources:
             limits:
               memory: "800Mi"
@@ -102,7 +108,7 @@ spec:
     spec:
       containers:
         - name: ner-engine
-          image: kxingjing/ner-engine:1.0
+          image: kxingjing/ner-engine:1.1
           env:
             - name: "RABBITMQ_URL"
               value: "host.docker.internal"
@@ -114,6 +120,27 @@ spec:
               value: "transcription"
             - name: "RABBITMQ_SUBSCRIBE_QUEUE"
               value: "ner-consumer"
+            - name: "RABBITMQ_HEARTBEAT"
+              value: "1200"
+            - name: "RABBITMQ_BLOCKED_TIMEOUT"
+              value: "2400"
+            - name: "PYTHONUNBUFFERED"
+              value: "1"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ner-service
+  labels:
+    app: ner-service
+spec:
+  ports:
+    - targetPort: 80
+      port: 80
+      protocol: TCP
+  selector:
+    app: ner-service
+  type: ClusterIP
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -144,10 +171,8 @@ spec:
               value: "guest"
             - name: "RABBITMQ_PASSWORD"
               value: "guest"
-            - name: "RABBITMQ_VHOST"
-              value: "/"
             - name: "RABBITMQ_HEARTBEAT"
-              value: "60"
+              value: "1200"
             - name: "RABBITMQ_TRANSCRIPTION_EXCHANGE"
               value: ""
             - name: "RABBITMQ_TRANSCRIPTION_QUEUE"
@@ -156,25 +181,26 @@ spec:
               value: ""
           resources:
             limits:
+              memory: "500Mi"
               cpu: 500m
             requests:
               cpu: 200m
+          ports:
+            - containerPort: 80
 ---
-# SERVICE
-# add in entry for ingress in ingress repo and run jenkins pipeline for ingress to update
 apiVersion: v1
 kind: Service
 metadata:
-  name: ner-service
+  name: transcription-service
   labels:
-    app: ner-service
+    app: transcription-service
 spec:
   ports:
     - targetPort: 80
       port: 80
       protocol: TCP
   selector:
-    app: ner-service
+    app: transcription-service
   type: ClusterIP
 ---
 apiVersion: apps/v1
@@ -206,10 +232,8 @@ spec:
               value: "guest"
             - name: "RABBITMQ_PASSWORD"
               value: "guest"
-            - name: "RABBITMQ_VHOST"
-              value: "/"
             - name: "RABBITMQ_HEARTBEAT"
-              value: "60"
+              value: "1200"
             - name: "RABBITMQ_TRANSCRIPTION_EXCHANGE"
               value: "transcription"
             - name: "RABBITMQ_TRANSCRIPTION_QUEUE"
@@ -220,23 +244,26 @@ spec:
               value: "200000"
           resources:
             limits:
+              memory: "500Mi"
               cpu: 500m
             requests:
               cpu: 200m
+          ports:
+            - containerPort: 80
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: transcription-service
+  name: state-service
   labels:
-    app: transcription-service
+    app: state-service
 spec:
   ports:
     - targetPort: 80
       port: 80
       protocol: TCP
   selector:
-    app: transcription-service
+    app: state-service
   type: ClusterIP
 ---
 apiVersion: apps/v1
@@ -270,6 +297,8 @@ spec:
               value: "guest"
             - name: "RABBITMQ_PASSWORD"
               value: "guest"
+            - name: "RABBITMQ_HEARTBEAT"
+              value: "1200"
             - name: "RABBITMQ_STATE_EXCHANGE"
               value: ""
             - name: "RABBITMQ_STATE_QUEUE"
@@ -286,23 +315,6 @@ spec:
               cpu: 200m
           ports:
             - containerPort: 80
----
-# SERVICE
-# add in entry for ingress in ingress repo and run jenkins pipeline for ingress to update
-apiVersion: v1
-kind: Service
-metadata:
-  name: state-service
-  labels:
-    app: state-service
-spec:
-  ports:
-    - targetPort: 80
-      port: 80
-      protocol: TCP
-  selector:
-    app: state-service
-  type: ClusterIP
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
