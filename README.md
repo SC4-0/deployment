@@ -3,7 +3,7 @@ You will need to build the docker image of the NER engine, as the NER engine is 
 Steps:
 1. Go to directory containing the Dockerfile (`cd joint-ic-sf-model/v3`)
 2. Run `docker build -t ner-engine:1.0 .`
-3. Replace "kxingjing/ner-engine:1.1" on line 111 with ner-engine:1.0
+3. Replace "kxingjing/ner-engine:1.1" on line 111 of backend.yaml with ner-engine:1.0
 4. Run `kubectl apply -f backend.yaml`
 5. Check that back-end is ready before running front-end.
 
