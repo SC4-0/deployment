@@ -173,11 +173,11 @@ spec:
               value: "guest"
             - name: "RABBITMQ_HEARTBEAT"
               value: "1200"
-            - name: "RABBITMQ_TRANSCRIPTION_EXCHANGE"
+            - name: "RABBITMQ_NER_EXCHANGE"
               value: ""
-            - name: "RABBITMQ_TRANSCRIPTION_QUEUE"
+            - name: "RABBITMQ_NER_QUEUE"
               value: "slot-intent"
-            - name: "RABBITMQ_TRANSCRIPTION_ROUTING_KEY"
+            - name: "RABBITMQ_NER_ROUTING_KEY"
               value: ""
           resources:
             limits:
