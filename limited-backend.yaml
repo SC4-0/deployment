@@ -1,4 +1,3 @@
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -33,99 +32,6 @@ spec:
       targetPort: 5672
       nodePort: 31672
       name: "connection"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: vosk-engine
-spec:
-  type: ClusterIP
-  selector:
-    app: vosk-engine
-  ports:
-    - port: 80
-      targetPort: 2700
-      protocol: TCP
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: vosk-engine
-spec:
-  selector:
-    matchLabels:
-      app: vosk-engine
-  replicas: 1
-  template:
-    metadata:
-      labels:
-        app: vosk-engine
-    spec:
-      containers:
-        - name: vosk-engine
-          image: kxingjing/asr-engine:1.1
-          env:
-            - name: "VOSK_SERVER_INTERFACE"
-              value: "0.0.0.0"
-            - name: "VOSK_SERVER_PORT"
-              value: "2700"
-            - name: "VOSK_MODEL_PATH"
-              value: "model"
-            - name: "VOSK_SAMPLE_RATE"
-              value: "48000"
-            - name: "RABBITMQ_URL"
-              value: "host.docker.internal"
-            - name: "RABBITMQ_PORT"
-              value: "31672"
-            - name: "RABBITMQ_EXCHANGE"
-              value: "transcription"
-            - name: "RABBITMQ_HEARTBEAT"
-              value: "1200"
-            - name: "RABBITMQ_BLOCKED_TIMEOUT"
-              value: "2400"
-            - name: "PYTHONUNBUFFERED"
-              value: "1"
-          resources:
-            limits:
-              memory: "800Mi"
-              cpu: "800m"
-          ports:
-            - containerPort: 2700
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ner-engine
-spec:
-  selector:
-    matchLabels:
-      app: ner-engine
-  replicas: 1
-  template:
-    metadata:
-      labels:
-        app: ner-engine
-    spec:
-      containers:
-        - name: ner-engine
-          image: kxingjing/ner-engine:1.2.0
-          env:
-            - name: "RABBITMQ_URL"
-              value: "host.docker.internal"
-            - name: "RABBITMQ_PORT"
-              value: "31672"
-            - name: "RABBITMQ_PUBLISH_QUEUE"
-              value: "slot-intent"
-            - name: "RABBITMQ_SUBSCRIBE_EXCHANGE"
-              value: "transcription"
-            - name: "RABBITMQ_SUBSCRIBE_QUEUE"
-              value: "ner-consumer"
-            - name: "RABBITMQ_HEARTBEAT"
-              value: "1200"
-            - name: "RABBITMQ_BLOCKED_TIMEOUT"
-              value: "2400"
-            - name: "PYTHONUNBUFFERED"
-              value: "1"
 ---
 apiVersion: v1
 kind: Service
@@ -346,12 +252,5 @@ spec:
             backend:
               service:
                 name: state-service
-                port:
-                  number: 80
-          - path: /vosk-engine
-            pathType: Prefix
-            backend:
-              service:
-                name: vosk-engine
                 port:
                   number: 80
