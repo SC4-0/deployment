@@ -157,7 +157,7 @@ spec:
     spec:
       containers:
         - name: ner-service
-          image: jonathanchewst/nerservice:1.0.0
+          image: jonathanchewst/nerservice:2.0.0
           env:
             - name: "UI_URL"
               value: "*"
