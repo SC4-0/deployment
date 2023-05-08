@@ -63,14 +63,14 @@ spec:
     spec:
       containers:
         - name: vosk-engine
-          image: kxingjing/asr-engine:1.1
+          image: kxingjing/asr-engine:1.2.0
           env:
             - name: "VOSK_SERVER_INTERFACE"
               value: "0.0.0.0"
             - name: "VOSK_SERVER_PORT"
               value: "2700"
             - name: "VOSK_MODEL_PATH"
-              value: "model"
+              value: "vosk-model-en-us-0.21-adapt"
             - name: "VOSK_SAMPLE_RATE"
               value: "48000"
             - name: "RABBITMQ_URL"
@@ -108,7 +108,7 @@ spec:
     spec:
       containers:
         - name: ner-engine
-          image: kxingjing/ner-engine:1.2.0
+          image: kxingjing/ner-engine:1.2.2
           env:
             - name: "RABBITMQ_URL"
               value: "host.docker.internal"
