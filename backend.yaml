@@ -316,6 +316,238 @@ spec:
           ports:
             - containerPort: 80
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-validation-service
+  labels:
+    app: order-validation-service
+spec:
+  ports:
+    - targetPort: 80
+      port: 80
+      protocol: TCP
+  selector:
+    app: order-validation-service
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-validation-service
+spec:
+  selector:
+    matchLabels:
+      app: order-validation-service
+  template:
+    metadata:
+      labels:
+        app: order-validation-service
+    spec:
+      containers:
+        - name: order-validation-service
+          image: kxingjing/order-validation-service:1.0.0
+          env:
+            - name: "UI_URL"
+              value: "*"
+            - name: "ASPNETCORE_ENVIRONMENT"
+              value: "Development"
+            - name: "RABBITMQ_HOST"
+              value: "host.docker.internal"
+            - name: "RABBITMQ_PORT"
+              value: "31672"
+            - name: "RABBITMQ_USER"
+              value: "guest"
+            - name: "RABBITMQ_PASSWORD"
+              value: "guest"
+            - name: "RABBITMQ_HEARTBEAT"
+              value: "1200"
+            - name: "RABBITMQ_VALID_ORDER_QUEUE"
+              value: "valid_order"
+            - name: "RABBITMQ_INVALID_ORDER_QUEUE"
+              value: "invalid_order"
+            - name: "RABBITMQ_STATE_EXCHANGE"
+              value: ""
+            - name: "RABBITMQ_VHOST"
+              value: "/"
+          resources:
+            limits:
+              memory: "500Mi"
+              cpu: 500m
+            requests:
+              cpu: 200m
+          ports:
+            - containerPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-allocation-service
+spec:
+  selector:
+    matchLabels:
+      app: order-allocation-service
+  template:
+    metadata:
+      labels:
+        app: order-allocation-service
+    spec:
+      containers:
+        - name: order-allocation-service
+          image: kxingjing/order-allocation-service:1.0.0
+          env:
+            - name: "UI_URL"
+              value: "*"
+            - name: "ASPNETCORE_ENVIRONMENT"
+              value: "Development"
+            - name: "RABBITMQ_HOST"
+              value: "host.docker.internal"
+            - name: "RABBITMQ_PORT"
+              value: "31672"
+            - name: "RABBITMQ_USER"
+              value: "guest"
+            - name: "RABBITMQ_PASSWORD"
+              value: "guest"
+            - name: "RABBITMQ_HEARTBEAT"
+              value: "1200"
+            - name: "RABBITMQ_VALID_ORDER_QUEUE"
+              value: "valid_order"
+            - name: "RABBITMQ_INVALID_ORDER_QUEUE"
+              value: "invalid_order"
+            - name: "RABBITMQ_ORDER_UPDATES_QUEUE"
+              value: "order_updates"
+            - name: "RABBITMQ_ORDER_ALLOCATION_QUEUE"
+              value: "order_allocation"
+            - name: "RABBITMQ_STATE_EXCHANGE"
+              value: ""
+            - name: "RABBITMQ_VHOST"
+              value: "/"
+          resources:
+            limits:
+              memory: "500Mi"
+              cpu: 500m
+            requests:
+              cpu: 200m
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mssql
+  labels:
+    app: mssql
+spec:
+  type: NodePort
+  selector:
+    app: mssql
+  ports:
+    - targetPort: 1433
+      port: 1433
+      nodePort: 30001
+      protocol: TCP
+---
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: hostpath-volume
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/run/desktop/mnt/host/c/users/pom-user/Documents/code/sc4.0_proj/database"
+---
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: mssql-volume
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 1.5Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/run/desktop/mnt/host/c/users/pom-user/Documents/code/sc4.0_proj/sql_data"
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mssql
+spec:
+  serviceName: "mssql"
+  replicas: 1 # two independent SQL Server instances to be deployed
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: mssql
+  template:
+    metadata:
+      labels:
+        app: mssql
+    spec:
+      securityContext:
+        fsGroup: 10001
+      containers:
+        - name: sql1
+          image: mcr.microsoft.com/mssql/server:2019-latest
+          #command: ["/bin/bash", "-c", "mkdir /usr/data"]
+                #command: ["/bin/bash", "/home/setup.sh", "abc123!@#"]
+          lifecycle:
+            postStart:
+              exec:
+                command: ["/bin/bash", "-c", "mkdir -p /usr/data && /opt/mssql-tools/bin/sqlcmd -S localhost -U SA -P 'Password123!' -i /home/setup.sql && /opt/mssql-tools/bin/sqlcmd -S localhost -U SA -P 'Password123!' -i /home/data.sql"]
+          ports:
+            - containerPort: 1433
+              name: tcpsql
+          env:
+            - name: ACCEPT_EULA
+              value: "Y"
+            # - name: MSSQL_ENABLE_HADR
+            #  value: "1"
+            - name: MSSQL_AGENT_ENABLED
+              value: "1"
+            - name: MSSQL_SA_PASSWORD
+              value: "Password123!"
+            - name: USER
+              value: "0"
+          volumeMounts:
+            - name: mssql-volume
+              mountPath: "/var/opt/mssql"
+            - name: hostpath-volume
+              mountPath: "/home"
+  volumeClaimTemplates:
+    - metadata:
+        name: mssql-volume
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 2Gi
+        selector:
+          matchLabels:
+            type: local
+    - metadata:
+        name: hostpath-volume
+      spec:
+        storageClassName: manual
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+        selector:
+          matchLabels:
+            type: local
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -353,5 +585,12 @@ spec:
             backend:
               service:
                 name: vosk-engine
+                port:
+                  number: 80
+          - path: /validate
+            pathType: Prefix
+            backend:
+              service:
+                name: order-validation-service
                 port:
                   number: 80
