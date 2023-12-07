@@ -326,10 +326,11 @@ spec:
   ports:
     - targetPort: 80
       port: 80
+      nodePort: 30003
       protocol: TCP
   selector:
     app: order-validation-service
-  type: ClusterIP
+  type: NodePort
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -346,7 +347,7 @@ spec:
     spec:
       containers:
         - name: order-validation-service
-          image: kxingjing/order-validation-service:1.0.0
+          image: kxingjing/order-validation-service:1.0.2
           env:
             - name: "UI_URL"
               value: "*"
@@ -461,6 +462,7 @@ spec:
     - ReadWriteOnce
   hostPath:
     path: "/run/desktop/mnt/host/c/users/pom-user/Documents/code/sc4.0_proj/database"
+  persistentVolumeReclaimPolicy: Delete
 ---
 kind: PersistentVolume
 apiVersion: v1
@@ -476,6 +478,7 @@ spec:
     - ReadWriteOnce
   hostPath:
     path: "/run/desktop/mnt/host/c/users/pom-user/Documents/code/sc4.0_proj/sql_data"
+  persistentVolumeReclaimPolicy: Delete
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -526,6 +529,7 @@ spec:
   volumeClaimTemplates:
     - metadata:
         name: mssql-volume
+        finalizers: []
       spec:
         accessModes:
           - ReadWriteOnce
@@ -537,6 +541,7 @@ spec:
             type: local
     - metadata:
         name: hostpath-volume
+        finalizers: []
       spec:
         storageClassName: manual
         accessModes:
@@ -611,7 +616,7 @@ spec:
     spec:
       containers:
         - name: order-planning-server
-          image: kxingjing/order_planning_server:1.0.0
+          image: kxingjing/order_planning_server:1.0.3
           env:
             - name: "RABBITMQ_HOST"
               value: "host.docker.internal"
